@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 temp_repos/
 .claude-cloud-config.json
+
+# Claude Code temporary files
+.claude-prompt-temp.txt
+.claude-task.md
