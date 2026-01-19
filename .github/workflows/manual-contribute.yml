@@ -57,6 +57,8 @@ jobs:
         env:
           # Set the Z.AI model mapping
           ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          # Pass issue via environment variable to avoid shell quoting issues
+          CLAUDE_CLOUD_ISSUE: ${{ inputs.issue }}
         run: |
           echo "🚀 Starting contribution to ${{ inputs.org }}/${{ inputs.repo }}..."
-          claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}" --issue "${{ inputs.issue }}"
+          claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}"

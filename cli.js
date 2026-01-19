@@ -69,6 +69,7 @@ program
   .option('-o, --org <org>', 'Organization or username')
   .option('-r, --repo <repo>', 'Repository name')
   .option('-i, --issue <issue>', 'Issue description')
+  .option('-f, --issue-file <file>', 'Read issue description from file')
   .action(async (options) => {
     try {
       // Load configuration
@@ -76,9 +77,18 @@ program
         console.log(chalk.red('❌ Configuration not found. Please run "claude-cloud setup" first.'));
         process.exit(1);
       }
-      
+
       const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      
+
+      // Get issue from various sources (priority: CLI arg > file > env > prompt)
+      let issue = options.issue;
+      if (options.issueFile) {
+        issue = fs.readFileSync(options.issueFile, 'utf-8');
+      }
+      if (!issue && process.env.CLAUDE_CLOUD_ISSUE) {
+        issue = process.env.CLAUDE_CLOUD_ISSUE;
+      }
+
       // Prompt for missing options
       const answers = await inquirer.prompt([
         {
@@ -99,14 +109,14 @@ program
           type: 'editor',
           name: 'issue',
           message: 'Describe the issue/task (will open your default editor):',
-          when: !options.issue,
+          when: !issue,
           validate: (input) => input.length > 0 || 'Issue description is required'
         }
       ]);
-      
+
       const org = options.org || answers.org;
       const repo = options.repo || answers.repo;
-      const issue = options.issue || answers.issue;
+      issue = issue || answers.issue;
       
       console.log(chalk.blue(`\n🚀 Starting contribution to ${org}/${repo}...`));
       
