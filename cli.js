@@ -203,39 +203,63 @@ Work carefully and make minimal, focused changes to address the issue.`;
       console.log(chalk.gray('─'.repeat(50)));
       console.log(issue);
       console.log(chalk.gray('─'.repeat(50)));
-      
+
+      // Check if logs should be shown
+      const showLogs = process.env.CLAUDE_CLOUD_SHOW_LOGS === 'true';
+      const logFile = path.join(repoPath, '.claude-logs.txt');
+
       // Execute Claude with the prompt
-      console.log(chalk.blue('\n🎯 Launching Claude...'));
-      
+      if (showLogs) {
+        console.log(chalk.blue('\n🎯 Launching Claude...'));
+      } else {
+        console.log(chalk.gray('\n🎯 Launching Claude (logs hidden, will be saved to artifact)...'));
+      }
+
       // Write prompt to a temporary file
       const tempPromptFile = path.join(repoPath, '.claude-prompt-temp.txt');
       fs.writeFileSync(tempPromptFile, claudePrompt);
-      
+
+      // Create log stream
+      const logStream = fs.createWriteStream(logFile);
+
       // Launch Claude in interactive mode
-      const env = { 
-        ...process.env, 
+      const env = {
+        ...process.env,
         ANTHROPIC_API_KEY: config.zaiApiKey
       };
 
       console.log(chalk.blue('STARTING CLAUDE PROCESS...'));
+
       // Use positional argument for the prompt and avoid shell on non-Windows to prevent shell injection issues
       const claudeProcess = spawn('claude', [
         '--dangerously-skip-permissions',
         claudePrompt
       ], {
         cwd: repoPath,
-        stdio: 'inherit',
+        stdio: showLogs ? 'inherit' : ['ignore', 'pipe', 'pipe'],
         shell: process.platform === 'win32',
         env: env
       });
-      
+
+      // Capture output to log file if not showing logs
+      if (!showLogs) {
+        claudeProcess.stdout.on('data', (data) => {
+          logStream.write(data);
+        });
+
+        claudeProcess.stderr.on('data', (data) => {
+          logStream.write(data);
+        });
+      }
+
       claudeProcess.on('error', (error) => {
         console.log(chalk.red('\n❌ Error running Claude CLI:'));
         console.log(chalk.red(error.message));
         console.log(chalk.yellow('\n💡 Make sure Claude Code is installed via npm:'));
         console.log(chalk.gray('   npm install -g @anthropic-ai/claude-code'));
+        logStream.write(`Error: ${error.message}\n`);
       });
-      
+
       claudeProcess.on('close', (code) => {
         // Cleanup temp files
         if (fs.existsSync(tempPromptFile)) {
@@ -244,12 +268,21 @@ Work carefully and make minimal, focused changes to address the issue.`;
         if (fs.existsSync(promptFile)) {
           fs.unlinkSync(promptFile);
         }
-        
+
+        // Close log stream
+        logStream.end();
+
         if (code === 0) {
           console.log(chalk.green('\n✅ Claude completed successfully!'));
           console.log(chalk.blue(`📁 Repository location: ${repoPath}`));
+          if (!showLogs) {
+            console.log(chalk.gray(`📋 Logs saved to: ${logFile}`));
+          }
         } else {
           console.log(chalk.yellow(`\n⚠️  Claude exited with code ${code}`));
+          if (!showLogs) {
+            console.log(chalk.gray(`📋 Check logs at: ${logFile}`));
+          }
         }
       });
       

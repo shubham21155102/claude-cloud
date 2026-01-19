@@ -15,6 +15,11 @@ on:
         description: 'Issue description'
         required: true
         type: string
+      show_logs:
+        description: 'Show Claude Code logs (default: false)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   contribute:
@@ -59,6 +64,17 @@ jobs:
           ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
           # Pass issue via environment variable to avoid shell quoting issues
           CLAUDE_CLOUD_ISSUE: ${{ inputs.issue }}
+          # Control whether to show Claude Code logs
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
         run: |
           echo "🚀 Starting contribution to ${{ inputs.org }}/${{ inputs.repo }}..."
+          echo "📋 Show logs: $CLAUDE_CLOUD_SHOW_LOGS"
           claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}"
+
+      - name: Upload Claude logs (if they exist)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
+          if-no-files-found: ignore
