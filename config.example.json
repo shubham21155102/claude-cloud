@@ -1,0 +1,5 @@
+{
+  "githubUsername": "your-github-username",
+  "githubEmail": "your-email@example.com",
+  "workDir": "/path/to/your/working/directory"
+}
