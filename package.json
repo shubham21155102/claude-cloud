@@ -1,0 +1,28 @@
+{
+  "name": "claude-cloud",
+  "version": "1.0.0",
+  "description": "Automated tool to contribute to any GitHub repository using Claude AI",
+  "main": "index.js",
+  "bin": {
+    "claude-cloud": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "github",
+    "automation",
+    "pr"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "inquirer": "^9.2.12",
+    "simple-git": "^3.20.0",
+    "chalk": "^4.1.2"
+  }
+}
