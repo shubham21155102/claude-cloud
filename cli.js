@@ -183,13 +183,15 @@ Work carefully and make minimal, focused changes to address the issue.`;
         ANTHROPIC_API_KEY: config.zaiApiKey
       };
 
+      console.log(chalk.blue('STARTING CLAUDE PROCESS...'));
+      // Use positional argument for the prompt and avoid shell on non-Windows to prevent shell injection issues
       const claudeProcess = spawn('claude', [
         '--dangerously-skip-permissions',
-        '--message', claudePrompt
+        claudePrompt
       ], {
         cwd: repoPath,
         stdio: 'inherit',
-        shell: true,
+        shell: process.platform === 'win32',
         env: env
       });
       
