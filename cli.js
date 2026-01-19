@@ -149,6 +149,30 @@ program
       const promptFile = path.join(repoPath, '.claude-task.md');
       fs.writeFileSync(promptFile, issue);
       
+      console.log(chalk.blue('\n🤖 Configuration Claude Environment...'));
+      
+      // Setup ~/.claude/settings.json for Z.AI
+      const homeDir = process.env.HOME || process.env.USERPROFILE;
+      const claudeDir = path.join(homeDir, '.claude');
+      if (!fs.existsSync(claudeDir)) {
+        fs.mkdirSync(claudeDir, { recursive: true });
+      }
+
+      const settings = {
+        env: {
+          ANTHROPIC_API_KEY: config.zaiApiKey,
+          ANTHROPIC_AUTH_TOKEN: config.zaiApiKey,
+          ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
+          API_TIMEOUT_MS: "3000000",
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        },
+        model: "opus"
+      };
+
+      const settingsFile = path.join(claudeDir, 'settings.json');
+      fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+      console.log(chalk.gray(`Created Claude configuration at ${settingsFile}`));
+
       console.log(chalk.blue('\n🤖 Running Claude AI...'));
       console.log(chalk.gray('This will execute: claude --dangerously-skip-permissions'));
       
