@@ -37,6 +37,20 @@ program
         validate: (input) => input.includes('@') || 'Valid email is required'
       },
       {
+        type: 'password',
+        name: 'githubToken',
+        message: 'Enter your GitHub Personal Access Token (TOKEN-GIT):',
+        mask: '*',
+        validate: (input) => input.length > 0 || 'GitHub Token is required for cloning/pushing'
+      },
+      {
+        type: 'password',
+        name: 'zaiApiKey',
+        message: 'Enter your Z.AI API Key:',
+        mask: '*',
+        validate: (input) => input.length > 0 || 'API Key is required'
+      },
+      {
         type: 'input',
         name: 'workDir',
         message: 'Enter working directory for cloning repos:',
@@ -114,9 +128,16 @@ program
           console.log(chalk.yellow('Pull failed, continuing anyway...'));
         }
       } else {
-        const repoUrl = `https://github.com/${org}/${repo}.git`;
-        console.log(chalk.gray(`Cloning from ${repoUrl}...`));
-        execSync(`git clone ${repoUrl} ${repoPath}`, { stdio: 'inherit' });
+        // Use token for authentication
+        const repoUrl = `https://${config.githubToken}@github.com/${org}/${repo}.git`;
+        console.log(chalk.gray(`Cloning from https://github.com/${org}/${repo}.git...`));
+        // Don't show token in logs
+        try {
+            execSync(`git clone ${repoUrl} ${repoPath}`, { stdio: ['inherit', 'inherit', 'inherit'] });
+        } catch(e) {
+            console.log(chalk.red('Failed to clone. Check your GitHub Token.'));
+            process.exit(1);
+        }
       }
       
       // Configure git user
@@ -130,7 +151,6 @@ program
       
       console.log(chalk.blue('\n🤖 Running Claude AI...'));
       console.log(chalk.gray('This will execute: claude --dangerously-skip-permissions'));
-      console.log(chalk.yellow('⚠️  Make sure Claude CLI is installed (z.ai devpack)'));
       
       // Prepare the Claude command
       const claudePrompt = `You are working on the repository ${org}/${repo}.
@@ -138,10 +158,10 @@ program
 ${issue}
 
 Please:
-1. Analyze the issue/task described above
-2. Make the necessary code changes
-3. Create a pull request with these changes
-4. The PR should be created under the name: ${config.githubUsername}
+1. Analyze the issue/task described above.
+2. Make the necessary code changes.
+3. Commit the changes. The commit message must be very detailed, explaining *why* and *what* was changed. Include your git id (${config.githubUsername}) in the comments or description as a contributor.
+4. Create a pull request with these changes. Alternatively, if you can't create a PR directly, push the branch to the remote origin so I can merge it.
 
 Work carefully and make minimal, focused changes to address the issue.`;
       
@@ -158,21 +178,26 @@ Work carefully and make minimal, focused changes to address the issue.`;
       fs.writeFileSync(tempPromptFile, claudePrompt);
       
       // Launch Claude in interactive mode
+      const env = { 
+        ...process.env, 
+        ANTHROPIC_API_KEY: config.zaiApiKey
+      };
+
       const claudeProcess = spawn('claude', [
         '--dangerously-skip-permissions',
         '--message', claudePrompt
       ], {
         cwd: repoPath,
         stdio: 'inherit',
-        shell: true
+        shell: true,
+        env: env
       });
       
       claudeProcess.on('error', (error) => {
         console.log(chalk.red('\n❌ Error running Claude CLI:'));
         console.log(chalk.red(error.message));
-        console.log(chalk.yellow('\n💡 Make sure Claude CLI is installed:'));
-        console.log(chalk.gray('   Visit: https://docs.z.ai/devpack/tool/claude'));
-        console.log(chalk.gray('   Or install via: npm install -g @z.ai/claude'));
+        console.log(chalk.yellow('\n💡 Make sure Claude Code is installed via npm:'));
+        console.log(chalk.gray('   npm install -g @anthropic-ai/claude-code'));
       });
       
       claudeProcess.on('close', (code) => {
@@ -212,6 +237,8 @@ program
     console.log(chalk.gray('─'.repeat(50)));
     console.log(chalk.cyan('GitHub Username:'), config.githubUsername);
     console.log(chalk.cyan('GitHub Email:'), config.githubEmail);
+    console.log(chalk.cyan('GitHub Token:'), config.githubToken ? '********' : 'Not set');
+    console.log(chalk.cyan('Z.AI API Key:'), config.zaiApiKey ? '********' : 'Not set');
     console.log(chalk.cyan('Working Directory:'), config.workDir);
     console.log(chalk.gray('─'.repeat(50)));
   });

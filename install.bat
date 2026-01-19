@@ -36,18 +36,18 @@ call npm install
 echo.
 
 REM Check Claude CLI installation
-echo 🤖 Checking Claude CLI installation...
+echo 🤖 Checking Claude Code installation...
 where claude >nul 2>nul
 if %errorlevel% neq 0 (
-    echo ⚠️  Claude CLI is not installed!
+    echo ⚠️  Claude Code is not installed!
     echo.
-    echo To use Claude Cloud, you need to install Claude CLI from z.ai:
-    echo Visit: https://docs.z.ai/devpack/tool/claude
+    echo To use Claude Cloud, you need to install Claude Code:
+    echo Run: npm install -g @anthropic-ai/claude-code
     echo.
-    echo You can continue with the installation, but Claude CLI is required to use this tool.
+    echo You can continue with the installation, but Claude Code is required to use this tool.
     echo.
 ) else (
-    echo ✅ Claude CLI found
+    echo ✅ Claude Code found
 )
 
 REM Optionally link globally

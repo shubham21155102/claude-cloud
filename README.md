@@ -14,17 +14,30 @@ Automated tool to contribute to any GitHub repository using Claude AI. Simply pr
 
 Before using Claude Cloud, you need to install:
 
-1. **Node.js** (v14 or higher)
-2. **Claude CLI** from z.ai devpack
+1. **Node.js** (v18 or higher)
+2. **Claude Code**
 
-### Installing Claude CLI
+### Installing Claude Code
 
-Follow the installation instructions at: [https://docs.z.ai/devpack/tool/claude](https://docs.z.ai/devpack/tool/claude)
+Follow the recommended installation method:
 
-Or install via npm (if available):
 ```bash
-npm install -g @z.ai/claude
+# Install Claude Code
+npm install -g @anthropic-ai/claude-code
 ```
+
+### Configuring GLM Coding Plan (Z.AI)
+
+1. **Get API Key**:
+   - Access Z.AI Open Platform.
+   - Create an API Key in the API Keys management page.
+
+2. **Configure Environment Variables**:
+   You can use the automated helper:
+   ```bash
+   npx @z_ai/coding-helper
+   ```
+   Or explicitly provide the API Key during `claude-cloud setup`.
 
 ## 🚀 Installation
 
@@ -47,6 +60,28 @@ npm link
 Or use it directly:
 ```bash
 node cli.js
+```
+
+## 🛠️ Setup
+
+Run the setup command to configure your credentials:
+
+```bash
+claude-cloud setup
+```
+
+You will be prompted for:
+- GitHub Username & Email
+- **GitHub Personal Access Token** (TOKEN-GIT): Required for cloning/pushing to repositories.
+- **Z.AI API Key**: Required for Claude Code to function.
+- Working Directory
+
+## 🎮 Usage
+
+Once set up, you can contribute to any repository:
+
+```bash
+claude-cloud contribute --org <org> --repo <repo> --issue "Describe your task"
 ```
 
 ## ⚙️ Setup
