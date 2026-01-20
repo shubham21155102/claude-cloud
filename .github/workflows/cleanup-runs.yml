@@ -43,7 +43,7 @@ jobs:
           DELETED_COUNT=0
           for RUN in $RUNS; do
             echo "Deleting run: #$RUN"
-            if gh run delete $RUN --repo $REPO --confirm 2>/dev/null; then
+            if gh run delete $RUN --repo $REPO 2>/dev/null; then
               DELETED_COUNT=$((DELETED_COUNT + 1))
               echo "✓ Successfully deleted run: #$RUN"
             else
