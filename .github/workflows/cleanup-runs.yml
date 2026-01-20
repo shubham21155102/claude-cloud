@@ -25,7 +25,7 @@ jobs:
           # Get all workflow runs that are not in 'running' state
           # We'll delete runs that are completed, success, failure, cancelled, timed_out, etc.
           
-          RUNS=$(gh run list --repo $REPO --limit 100 --json id,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .id')
+          RUNS=$(gh run list --repo $REPO --limit 100 --json number,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .number')
           
           if [ -z "$RUNS" ]; then
             echo "No old workflow runs found to delete."
