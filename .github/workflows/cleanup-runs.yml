@@ -1,0 +1,54 @@
+name: Cleanup Old Workflow Runs
+
+on:
+  schedule:
+    # Run at 2 AM, 10 AM, and 6 PM UTC (3 times a day)
+    - cron: '0 2,10,18 * * *'
+  
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Starting cleanup of old workflow runs..."
+          
+          # Get all workflow runs that are not in 'running' state
+          # We'll delete runs that are completed, failed, cancelled, etc.
+          
+          RUNS=$(gh run list --repo $REPO --status "completed" --status "failed" --status "cancelled" --json id,status,createdAt -q '.[].id')
+          
+          if [ -z "$RUNS" ]; then
+            echo "No old workflow runs found to delete."
+            exit 0
+          fi
+          
+          echo "Found the following workflow runs to delete:"
+          for RUN in $RUNS; do
+            echo "  - Run ID: $RUN"
+          done
+          
+          # Delete each run
+          DELETED_COUNT=0
+          for RUN in $RUNS; do
+            echo "Deleting run: $RUN"
+            if gh run delete $RUN --repo $REPO --confirm; then
+              DELETED_COUNT=$((DELETED_COUNT + 1))
+              echo "✓ Successfully deleted run: $RUN"
+            else
+              echo "✗ Failed to delete run: $RUN"
+            fi
+          done
+          
+          echo ""
+          echo "Cleanup completed!"
+          echo "Total runs deleted: $DELETED_COUNT"
