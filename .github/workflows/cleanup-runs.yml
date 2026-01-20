@@ -25,6 +25,7 @@ jobs:
           # Get all workflow runs that are not in 'running' state
           # Delete runs with statuses: completed, success, failure, cancelled, timed_out, etc.
           # Keep only: in_progress, queued, waiting, pending, requested, action_required
+          # This includes all workflows, including the cleanup workflow itself
           
           RUNS=$(gh run list --repo $REPO --limit 100 --json number,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .number')
           
@@ -35,19 +36,21 @@ jobs:
           
           echo "Found the following workflow runs to delete:"
           for RUN in $RUNS; do
-            echo "  - Run ID: $RUN"
+            echo "  - Run #$RUN"
           done
           
           # Delete each run
           DELETED_COUNT=0
           for RUN in $RUNS; do
-            echo "Deleting run: $RUN"
-            if gh run delete $RUN --repo $REPO --confirm; then
+            echo "Deleting run: #$RUN"
+            if gh run delete $RUN --repo $REPO --confirm 2>/dev/null; then
               DELETED_COUNT=$((DELETED_COUNT + 1))
-              echo "✓ Successfully deleted run: $RUN"
+              echo "✓ Successfully deleted run: #$RUN"
             else
-              echo "✗ Failed to delete run: $RUN"
+              echo "✗ Failed to delete run: #$RUN"
             fi
+            # Small delay to avoid rate limiting
+            sleep 1
           done
           
           echo ""
