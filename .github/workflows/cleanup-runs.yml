@@ -23,7 +23,8 @@ jobs:
           echo "Starting cleanup of old workflow runs..."
           
           # Get all workflow runs that are not in 'running' state
-          # We'll delete runs that are completed, success, failure, cancelled, timed_out, etc.
+          # Delete runs with statuses: completed, success, failure, cancelled, timed_out, etc.
+          # Keep only: in_progress, queued, waiting, pending, requested, action_required
           
           RUNS=$(gh run list --repo $REPO --limit 100 --json number,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .number')
           
