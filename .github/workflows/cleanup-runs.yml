@@ -27,7 +27,7 @@ jobs:
           # Keep only: in_progress, queued, waiting, pending, requested, action_required
           # This includes all workflows, including the cleanup workflow itself
           
-          RUNS=$(gh run list --repo $REPO --limit 100 --json number,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .number')
+          RUNS=$(gh run list --repo $REPO --limit 100 --json databaseId,status -q '.[] | select(.status != "in_progress" and .status != "queued" and .status != "waiting" and .status != "pending" and .status != "requested" and .status != "action_required") | .databaseId')
           
           if [ -z "$RUNS" ]; then
             echo "No old workflow runs found to delete."
