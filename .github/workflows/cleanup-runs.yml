@@ -7,6 +7,11 @@ on:
   
   workflow_dispatch:
 
+  workflow_run:
+    workflows: ["*"]
+    types:
+      - completed
+
 permissions:
   actions: write
   contents: read
@@ -14,6 +19,10 @@ permissions:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name != 'Cleanup Old Workflow Runs')
     
     steps:
       - name: Checkout repository
