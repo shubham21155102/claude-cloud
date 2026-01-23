@@ -1,0 +1,83 @@
+name: Manual Contribution With Logs Streaming
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: 'Organization or username'
+        required: true
+        type: string
+      repo:
+        description: 'Repository name'
+        required: true
+        type: string
+      issue:
+        description: 'Issue description'
+        required: true
+        type: string
+      show_logs:
+        description: 'Show Claude Code logs (default: false)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  contribute:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout claude-cloud
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
+
+      - name: Configure Claude Cloud
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          # Create the config file manually in the home directory
+          cat <<EOF > $HOME/.claude-cloud-config.json
+          {
+            "githubUsername": "$GH_USERNAME",
+            "githubEmail": "$GH_EMAIL",
+            "githubToken": "$GH_TOKEN",
+            "zaiApiKey": "$ZAI_API_KEY",
+            "workDir": "$GITHUB_WORKSPACE/temp_repos"
+          }
+          EOF
+
+      - name: Run Contribution
+        env:
+          # Set the Z.AI model mapping
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          # Pass issue via environment variable
+          CLAUDE_CLOUD_ISSUE: ${{ inputs.issue }}
+          # Control whether to show Claude Code logs
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+        run: |
+          echo "🚀 Starting contribution to ${{ inputs.org }}/${{ inputs.repo }}..."
+          echo "📋 Show logs setting: $CLAUDE_CLOUD_SHOW_LOGS"
+          
+          # Use stdbuf to disable output buffering for real-time streaming
+          # We redirect stderr to stdout so all logs appear in the GitHub Actions UI immediately
+          stdbuf -o0 -e0 claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}" 2>&1
+
+      - name: Upload Claude logs (if they exist)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
+          if-no-files-found: ignore
