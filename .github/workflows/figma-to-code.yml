@@ -1,0 +1,309 @@
+name: Figma to Code Converter
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: 'Target GitHub organization or username'
+        required: true
+        type: string
+      repo:
+        description: 'Target repository name'
+        required: true
+        type: string
+      figma_file_url:
+        description: 'Figma file URL to convert (e.g., https://www.figma.com/file/...)'
+        required: true
+        type: string
+      figma_node_id:
+        description: 'Specific Figma node ID to convert (optional, for specific frames/components)'
+        required: false
+        type: string
+      conversion_task:
+        description: 'Describe what to convert and where (e.g., "Convert the login page design to React components in src/components/auth")'
+        required: true
+        type: string
+      target_branch:
+        description: 'Target branch name (default: figma-conversion-[timestamp])'
+        required: false
+        type: string
+      show_logs:
+        description: 'Show Claude Code logs (default: false)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  figma_to_code:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout claude-cloud
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
+
+      - name: Configure Claude with Figma MCP
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          FIGMA_API_TOKEN: ${{ secrets.FIGMA_API_TOKEN }}
+        run: |
+          # Setup Claude settings for Z.AI
+          mkdir -p $HOME/.claude
+          cat <<EOF > $HOME/.claude/settings.json
+          {
+            "env": {
+              "ANTHROPIC_API_KEY": "$ZAI_API_KEY",
+              "ANTHROPIC_AUTH_TOKEN": "$ZAI_API_KEY",
+              "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+              "API_TIMEOUT_MS": "3000000",
+              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+              "FIGMA_API_TOKEN": "$FIGMA_API_TOKEN"
+            },
+            "model": "opus"
+          }
+          EOF
+
+          # Setup Claude Cloud config
+          cat <<EOF > $HOME/.claude-cloud-config.json
+          {
+            "githubUsername": "$GH_USERNAME",
+            "githubEmail": "$GH_EMAIL",
+            "githubToken": "$GH_TOKEN",
+            "zaiApiKey": "$ZAI_API_KEY",
+            "figmaApiToken": "$FIGMA_API_TOKEN",
+            "workDir": "$GITHUB_WORKSPACE/temp_repos"
+          }
+          EOF
+
+          # Setup MCP configuration for Figma
+          cat <<EOF > $HOME/.claude/.mcp.json
+          {
+            "mcpServers": {
+              "figma": {
+                "type": "http",
+                "url": "https://mcp.figma.com/mcp",
+                "env": {
+                  "FIGMA_API_TOKEN": "$FIGMA_API_TOKEN"
+                }
+              }
+            }
+          }
+          EOF
+
+          echo "✅ Claude, Figma MCP, and GitHub configured"
+
+      - name: Clone and Setup Target Repository
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "📥 Cloning target repository: ${{ inputs.org }}/${{ inputs.repo }}..."
+
+          # Create working directory
+          mkdir -p $GITHUB_WORKSPACE/temp_repos
+          REPO_PATH="$GITHUB_WORKSPACE/temp_repos/${{ inputs.org }}_${{ inputs.repo }}"
+
+          # Clone the repository
+          git clone https://${GH_TOKEN}@github.com/${{ inputs.org }}/${{ inputs.repo }}.git $REPO_PATH
+
+          # Configure git user
+          cd $REPO_PATH
+          git config user.name "$GH_USERNAME"
+          git config user.email "$GH_EMAIL"
+
+          # Create a new branch for the conversion
+          BRANCH_NAME="${{ inputs.target_branch }}"
+          if [ -z "$BRANCH_NAME" ]; then
+            BRANCH_NAME="figma-conversion-$(date +%s)"
+          fi
+
+          git checkout -b $BRANCH_NAME
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "REPO_PATH=$REPO_PATH" >> $GITHUB_ENV
+
+          echo "✅ Repository cloned and branch '$BRANCH_NAME' created"
+
+      - name: Run Figma to Code Conversion
+        env:
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          FIGMA_FILE_URL: ${{ inputs.figma_file_url }}
+          FIGMA_NODE_ID: ${{ inputs.figma_node_id }}
+          CONVERSION_TASK: ${{ inputs.conversion_task }}
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+        run: |
+          echo "🎨 Starting Figma to Code conversion..."
+          echo "📁 Target Repository: ${{ inputs.org }}/${{ inputs.repo }}"
+          echo "📁 Figma File: $FIGMA_FILE_URL"
+          echo "🎯 Node ID: ${FIGMA_NODE_ID:-<not specified>}"
+          echo "📋 Conversion Task: $CONVERSION_TASK"
+          echo "🌿 Branch: $BRANCH_NAME"
+
+          cd $REPO_PATH
+
+          # Build the conversion prompt for Claude
+          cat <<'PROMPT_EOF' > conversion-task.txt
+          You are converting a Figma design to code and integrating it into an existing repository.
+
+          Target Repository: ${{ inputs.org }}/${{ inputs.repo }}
+          Repository Path: $REPO_PATH
+          Git Branch: $BRANCH_NAME
+          Your GitHub Username: $GH_USERNAME
+          Your GitHub Email: $GH_EMAIL
+
+          Figma File URL: $FIGMA_FILE_URL
+          $([ -n "$FIGMA_NODE_ID" ] && echo "Specific Node ID: $FIGMA_NODE_ID" || echo "No specific node ID - work with the entire file or main frames")
+
+          Conversion Task:
+          $CONVERSION_TASK
+
+          Please follow these steps:
+
+          1. **Analyze the Repository's Design System**
+             - Examine the existing codebase structure
+             - Identify the design system being used (CSS modules, Tailwind, styled-components, etc.)
+             - Look for existing component libraries (Material-UI, Ant Design, Chakra UI, custom components, etc.)
+             - Check the styling approach and patterns
+             - Identify the framework (React, Vue, Angular, Next.js, etc.)
+             - Note any existing theme configuration, color schemes, typography scales
+
+          2. **Access and Analyze the Figma Design**
+             - Use the Figma MCP tools to open and inspect the design
+             - Extract all design tokens: colors, spacing, typography, shadows, border radius
+             - Identify components, layouts, and responsive breakpoints
+             - Note interactions, states (hover, active, disabled), and variants
+
+          3. **Match Design to Existing System**
+             - Map Figma design tokens to the repository's existing design tokens
+             - Reuse existing components when possible (buttons, inputs, cards, etc.)
+             - Only create new components when the existing ones don't match the design
+             - Follow the repository's coding patterns and conventions
+
+          4. **Generate Code**
+             - Create/update components following the repository's structure
+             - Use the same styling approach as the existing codebase
+             - Ensure accessibility (ARIA labels, keyboard navigation, semantic HTML)
+             - Make components responsive according to the design specifications
+             - Add proper TypeScript types if the repository uses TypeScript
+             - Follow the repository's file naming and organization conventions
+
+          5. **Integration and Testing**
+             - Import and use any existing design system components
+             - Create new pages/routes as specified in the conversion task
+             - Ensure all imports are correct and dependencies are available
+             - Match the existing code style (indentation, quotes, semicolons, etc.)
+
+          6. **Documentation**
+             - Add JSDoc comments or TSDoc for components
+             - Document any new design tokens or utilities created
+             - Note any deviations from the Figma design and why
+
+          7. **Git Commit**
+             - Create a detailed commit message explaining what was converted and why
+             - Include your git id ($GH_USERNAME) in the commit
+             - Format: "feat: convert [design name] from Figma to code"
+             - In the commit body, list:
+               * Components created/modified
+               * Design tokens added/updated
+               * Any deviations from Figma design and reasons
+               * Files added/modified/deleted
+
+          Important Constraints:
+          - ALWAYS match the existing design system - do not introduce new styling approaches
+          - Reuse existing components whenever possible
+          - Follow the exact coding patterns and conventions in the repository
+          - If the design conflicts with the existing system, prioritize the existing system and document the deviation
+          - Do NOT add new dependencies unless absolutely necessary
+          - Make minimal, focused changes to accomplish the conversion task
+          - Generate production-ready, maintainable code
+
+          Use the Figma MCP tools to interact with the design file and the repository's codebase.
+          PROMPT_EOF
+
+          # Run Claude with the conversion task
+          if [ "$CLAUDE_CLOUD_SHOW_LOGS" = "true" ]; then
+            echo "📝 Showing Claude logs..."
+            claude --dangerously-skip-permissions "$(cat conversion-task.txt)"
+          else
+            echo "📝 Running Claude (logs hidden)..."
+            claude --dangerously-skip-permissions "$(cat conversion-task.txt)" > claude-conversion-output.txt 2>&1
+          fi
+
+      - name: Push Changes and Create Pull Request
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "📤 Pushing changes to remote..."
+          cd $REPO_PATH
+
+          # Check if there are any changes to push
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "⚠️  No changes were made. Skipping PR creation."
+            exit 0
+          fi
+
+          # Push the branch
+          git push -u origin $BRANCH_NAME
+
+          # Create a pull request using gh CLI
+          PR_TITLE="feat: Convert Figma design to code - ${{ inputs.conversion_task }}"
+          PR_BODY=$(cat <<EOF
+          ## 🎨 Figma to Code Conversion
+
+          This PR converts a Figma design into code for the ${{ inputs.org }}/${{ inputs.repo }} repository.
+
+          ### 📁 Figma Source
+          - **File:** ${{ inputs.figma_file_url }}
+          $([ -n "${{ inputs.figma_node_id }}" ] && echo "- **Node ID:** ${{ inputs.figma_node_id }}" || echo "- **Scope:** Entire file / main frames")
+
+          ### 🎯 Conversion Task
+          ${{ inputs.conversion_task }}
+
+          ### ✨ What's Included
+          - Design analysis and token extraction from Figma
+          - Code generation matching the repository's existing design system
+          - Component creation/integration following repository conventions
+          - Responsive implementation as specified in the design
+
+          ### 🔍 Review Notes
+          - The code follows the existing design system and coding patterns
+          - Existing components were reused where possible
+          - Any deviations from the Figma design are documented in the code
+
+          ---
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+          EOF
+          )
+
+          gh pr create \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --base main \
+            --head $BRANCH_NAME
+
+          echo "✅ Pull request created successfully!"
+
+      - name: Upload Claude logs (if they exist)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figma-conversion-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/claude-conversion-output.txt
+          if-no-files-found: ignore
