@@ -1,21 +1,26 @@
 {
   "name": "claude-cloud",
   "version": "1.0.0",
-  "description": "Automated tool to contribute to any GitHub repository using Claude AI",
+  "description": "Automated tool to contribute to GitHub repositories and automate Figma design tasks using Claude AI with MCP",
   "main": "index.js",
   "bin": {
-    "claude-cloud": "./cli.js"
+    "claude-cloud": "./cli.js",
+    "figma-designer": "./figma-designer/figma-cli.js"
   },
   "scripts": {
     "start": "node cli.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "echo \"No tests yet\" && exit 0",
+    "design:figma": "node figma-designer/figma-cli.js"
   },
   "keywords": [
     "claude",
     "ai",
     "github",
     "automation",
-    "pr"
+    "pr",
+    "figma",
+    "design",
+    "mcp"
   ],
   "author": "",
   "license": "MIT",

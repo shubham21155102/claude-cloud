@@ -1,0 +1,132 @@
+name: Figma Designer
+
+on:
+  workflow_dispatch:
+    inputs:
+      figma_file_url:
+        description: 'Figma file URL (e.g., https://www.figma.com/file/...)'
+        required: true
+        type: string
+      figma_node_id:
+        description: 'Specific Figma node ID (optional, for specific frames/components)'
+        required: false
+        type: string
+      design_task:
+        description: 'Design task description'
+        required: true
+        type: string
+      show_logs:
+        description: 'Show Claude Code logs (default: false)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  figma_design:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout claude-cloud
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
+
+      - name: Configure Claude with Figma MCP
+        env:
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          FIGMA_API_TOKEN: ${{ secrets.FIGMA_API_TOKEN }}
+        run: |
+          # Setup Claude settings for Z.AI
+          mkdir -p $HOME/.claude
+          cat <<EOF > $HOME/.claude/settings.json
+          {
+            "env": {
+              "ANTHROPIC_API_KEY": "$ZAI_API_KEY",
+              "ANTHROPIC_AUTH_TOKEN": "$ZAI_API_KEY",
+              "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+              "API_TIMEOUT_MS": "3000000",
+              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+              "FIGMA_API_TOKEN": "$FIGMA_API_TOKEN"
+            },
+            "model": "opus"
+          }
+          EOF
+
+          # Setup MCP configuration for Figma
+          cat <<EOF > $HOME/.claude/.mcp.json
+          {
+            "mcpServers": {
+              "figma": {
+                "type": "http",
+                "url": "https://mcp.figma.com/mcp",
+                "env": {
+                  "FIGMA_API_TOKEN": "$FIGMA_API_TOKEN"
+                }
+              }
+            }
+          }
+          EOF
+
+          echo "✅ Claude and Figma MCP configured"
+
+      - name: Run Figma Design Task
+        env:
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          FIGMA_FILE_URL: ${{ inputs.figma_file_url }}
+          FIGMA_NODE_ID: ${{ inputs.figma_node_id }}
+          DESIGN_TASK: ${{ inputs.design_task }}
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+        run: |
+          echo "🎨 Starting Figma design task..."
+          echo "📁 Figma File: $FIGMA_FILE_URL"
+          echo "🎯 Node ID: ${FIGMA_NODE_ID:-<not specified>}"
+          echo "📋 Task: $DESIGN_TASK"
+
+          # Create workspace directory
+          mkdir -p $GITHUB_WORKSPACE/figma-workspace
+          cd $GITHUB_WORKSPACE/figma-workspace
+
+          # Build the prompt for Claude
+          cat <<'PROMPT_EOF' > design-task.txt
+          You are working with Figma to complete a design task.
+
+          Figma File URL: $FIGMA_FILE_URL
+          $([ -n "$FIGMA_NODE_ID" ] && echo "Specific Node ID: $FIGMA_NODE_ID" || echo "No specific node ID - work with the entire file or main frames")
+
+          Design Task:
+          $DESIGN_TASK
+
+          Please:
+          1. Open the Figma file using the MCP tools
+          2. Analyze the current design structure
+          3. Complete the requested design task
+          4. Save your changes and provide a summary of what was modified
+
+          Use the Figma MCP tools available to interact with the design file.
+          PROMPT_EOF
+
+          # Run Claude with the design task
+          if [ "$CLAUDE_CLOUD_SHOW_LOGS" = "true" ]; then
+            echo "📝 Showing Claude logs..."
+            claude --dangerously-skip-permissions "$(cat design-task.txt)"
+          else
+            echo "📝 Running Claude (logs hidden)..."
+            claude --dangerously-skip-permissions "$(cat design-task.txt)" > claude-output.txt 2>&1
+          fi
+
+      - name: Upload Claude output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figma-design-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/figma-workspace/claude-output.txt
+          if-no-files-found: ignore
