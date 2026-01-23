@@ -66,13 +66,23 @@ jobs:
           CLAUDE_CLOUD_ISSUE: ${{ inputs.issue }}
           # Control whether to show Claude Code logs
           CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+          # Force Node.js to disable TTY colors and interactive behavior
+          FORCE_COLOR: 0
+          # Provide the API Key directly as a fallback
+          ANTHROPIC_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
           echo "🚀 Starting contribution to ${{ inputs.org }}/${{ inputs.repo }}..."
           echo "📋 Show logs setting: $CLAUDE_CLOUD_SHOW_LOGS"
-          
-          # Use stdbuf to disable output buffering for real-time streaming
-          # We redirect stderr to stdout so all logs appear in the GitHub Actions UI immediately
-          stdbuf -o0 -e0 claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}" 2>&1
+
+          # 1. Use 'unbuffer' (expect) if available, or stdbuf, to force stream
+          # 2. Set NODE_OPTIONS to force no-TTY mode
+          # 3. Add --yes to auto-confirm prompts
+
+          export NODE_OPTIONS="--no-warnings"
+
+          # We execute the command, piping stderr to stdout immediately
+          # We add --yes to prevent the tool from hanging on interactive prompts
+          stdbuf -o0 -e0 claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}" --yes 2>&1
 
       - name: Upload Claude logs (if they exist)
         if: always()

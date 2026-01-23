@@ -70,6 +70,7 @@ program
   .option('-r, --repo <repo>', 'Repository name')
   .option('-i, --issue <issue>', 'Issue description')
   .option('-f, --issue-file <file>', 'Read issue description from file')
+  .option('--yes', 'Auto-confirm prompts (non-interactive mode for CI/CD)')
   .action(async (options) => {
     try {
       // Load configuration
@@ -89,27 +90,27 @@ program
         issue = process.env.CLAUDE_CLOUD_ISSUE;
       }
 
-      // Prompt for missing options
+      // Prompt for missing options (skip in non-interactive mode)
       const answers = await inquirer.prompt([
         {
           type: 'input',
           name: 'org',
           message: 'Enter the GitHub organization or username:',
-          when: !options.org,
+          when: !options.org && !options.yes,
           validate: (input) => input.length > 0 || 'Organization/username is required'
         },
         {
           type: 'input',
           name: 'repo',
           message: 'Enter the repository name:',
-          when: !options.repo,
+          when: !options.repo && !options.yes,
           validate: (input) => input.length > 0 || 'Repository name is required'
         },
         {
           type: 'editor',
           name: 'issue',
           message: 'Describe the issue/task (will open your default editor):',
-          when: !issue,
+          when: !issue && !options.yes,
           validate: (input) => input.length > 0 || 'Issue description is required'
         }
       ]);
@@ -117,6 +118,22 @@ program
       const org = options.org || answers.org;
       const repo = options.repo || answers.repo;
       issue = issue || answers.issue;
+
+      // Validate required parameters in non-interactive mode
+      if (options.yes) {
+        if (!org) {
+          console.log(chalk.red('❌ Error: --org is required in non-interactive mode'));
+          process.exit(1);
+        }
+        if (!repo) {
+          console.log(chalk.red('❌ Error: --repo is required in non-interactive mode'));
+          process.exit(1);
+        }
+        if (!issue) {
+          console.log(chalk.red('❌ Error: --issue or CLAUDE_CLOUD_ISSUE env var is required in non-interactive mode'));
+          process.exit(1);
+        }
+      }
       
       console.log(chalk.blue(`\n🚀 Starting contribution to ${org}/${repo}...`));
       
@@ -215,7 +232,7 @@ Work carefully and make minimal, focused changes to address the issue.`;
         console.log(chalk.gray('\n🎯 Launching Claude (logs hidden, will be saved to artifact)...'));
       }
 
-      // Write prompt to a temporary file
+      // Write prompt to a temporary file (as backup)
       const tempPromptFile = path.join(repoPath, '.claude-prompt-temp.txt');
       fs.writeFileSync(tempPromptFile, claudePrompt);
 
@@ -225,32 +242,47 @@ Work carefully and make minimal, focused changes to address the issue.`;
       // Launch Claude in interactive mode
       const env = {
         ...process.env,
-        ANTHROPIC_API_KEY: config.zaiApiKey
+        ANTHROPIC_API_KEY: config.zaiApiKey,
+        FORCE_COLOR: '0',  // Disable colors for non-TTY environments
+        NODE_OPTIONS: '--no-warnings'  // Suppress Node warnings
       };
 
       console.log(chalk.blue('STARTING CLAUDE PROCESS...'));
 
-      // Use positional argument for the prompt and avoid shell on non-Windows to prevent shell injection issues
+      // CRITICAL FIX: Always use piped stdio to prevent hanging in non-interactive environments
+      // We use 'pipe' for stdin to pass the prompt programmatically
+      // We pipe stdout and stderr so we can stream them to console/log file regardless of showLogs setting
       const claudeProcess = spawn('claude', [
         '--dangerously-skip-permissions',
+        '--prompt',
         claudePrompt
       ], {
         cwd: repoPath,
-        stdio: showLogs ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],  // Always pipe stdout and stderr
         shell: process.platform === 'win32',
         env: env
       });
 
-      // Capture output to log file if not showing logs
-      if (!showLogs) {
-        claudeProcess.stdout.on('data', (data) => {
-          logStream.write(data);
-        });
+      // Always capture output to ensure proper streaming in CI/CD environments
+      claudeProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        // Write to log file
+        logStream.write(output);
+        // Show in console if showLogs is enabled
+        if (showLogs) {
+          console.log(output);
+        }
+      });
 
-        claudeProcess.stderr.on('data', (data) => {
-          logStream.write(data);
-        });
-      }
+      claudeProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        // Write to log file
+        logStream.write(output);
+        // Show in console if showLogs is enabled
+        if (showLogs) {
+          console.error(output);
+        }
+      });
 
       claudeProcess.on('error', (error) => {
         console.log(chalk.red('\n❌ Error running Claude CLI:'));
