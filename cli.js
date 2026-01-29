@@ -232,8 +232,9 @@ Work carefully and make minimal, focused changes to address the issue.`;
 
       // Use positional argument for the prompt and avoid shell on non-Windows to prevent shell injection issues
       const claudeProcess = spawn('claude', [
-        '--dangerously-skip-permissions',
-        claudePrompt
+        '--print',
+        claudePrompt,
+        '--dangerously-skip-permissions'
       ], {
         cwd: repoPath,
         stdio: showLogs ? 'inherit' : ['ignore', 'pipe', 'pipe'],
