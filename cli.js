@@ -117,8 +117,28 @@ program
       const org = options.org || answers.org;
       const repo = options.repo || answers.repo;
       issue = issue || answers.issue;
-      
-      console.log(chalk.blue(`\n🚀 Starting contribution to ${org}/${repo}...`));
+
+      // Sanitize inputs to prevent issues with git commands
+      const sanitizedOrg = org ? org.trim() : '';
+      const sanitizedRepo = repo ? repo.trim() : '';
+
+      // Validate inputs
+      if (!sanitizedOrg || !sanitizedRepo) {
+        console.log(chalk.red('❌ Organization and repository name are required.'));
+        process.exit(1);
+      }
+
+      // Check for invalid characters that would break git commands
+      if (sanitizedOrg.includes(',') || sanitizedOrg.includes(' ') ||
+          sanitizedRepo.includes(',') || sanitizedRepo.includes(' ')) {
+        console.log(chalk.red('❌ Invalid repository name.'));
+        console.log(chalk.yellow('Organization and repository names must not contain commas or spaces.'));
+        console.log(chalk.gray('Expected format: --org <org-name> --repo <repo-name>'));
+        console.log(chalk.gray('Example: --org Grassstone-AI-Pvt-Ltd --repo auth-system'));
+        process.exit(1);
+      }
+
+      console.log(chalk.blue(`\n🚀 Starting contribution to ${sanitizedOrg}/${sanitizedRepo}...`));
       
       // Create working directory
       const workDir = config.workDir || path.join(process.cwd(), 'temp_repos');
@@ -126,7 +146,7 @@ program
         fs.mkdirSync(workDir, { recursive: true });
       }
       
-      const repoPath = path.join(workDir, `${org}_${repo}`);
+      const repoPath = path.join(workDir, `${sanitizedOrg}_${sanitizedRepo}`);
       
       // Clone or update repository
       console.log(chalk.blue('📥 Cloning/updating repository...'));
@@ -139,8 +159,8 @@ program
         }
       } else {
         // Use token for authentication
-        const repoUrl = `https://${config.githubToken}@github.com/${org}/${repo}.git`;
-        console.log(chalk.gray(`Cloning from https://github.com/${org}/${repo}.git...`));
+        const repoUrl = `https://${config.githubToken}@github.com/${sanitizedOrg}/${sanitizedRepo}.git`;
+        console.log(chalk.gray(`Cloning from https://github.com/${sanitizedOrg}/${sanitizedRepo}.git...`));
         // Don't show token in logs
         try {
             execSync(`git clone ${repoUrl} ${repoPath}`, { stdio: ['inherit', 'inherit', 'inherit'] });
@@ -187,7 +207,7 @@ program
       console.log(chalk.gray('This will execute: claude --dangerously-skip-permissions'));
       
       // Prepare the Claude command
-      const claudePrompt = `You are working on the repository ${org}/${repo}.
+      const claudePrompt = `You are working on the repository ${sanitizedOrg}/${sanitizedRepo}.
 
 ${issue}
 
