@@ -21,6 +21,9 @@ on:
         type: boolean
         default: false
 
+  repository_dispatch:
+    types: [slack-trigger]
+
 jobs:
   contribute:
     runs-on: ubuntu-latest
