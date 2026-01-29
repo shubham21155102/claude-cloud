@@ -65,14 +65,17 @@ jobs:
         env:
           # Set the Z.AI model mapping
           ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          # Support both manual (inputs) and Slack (client_payload) triggers
+          ORG_NAME: ${{ github.event.client_payload.org || inputs.org }}
+          REPO_NAME: ${{ github.event.client_payload.repo || inputs.repo }}
           # Pass issue via environment variable to avoid shell quoting issues
-          CLAUDE_CLOUD_ISSUE: ${{ inputs.issue }}
+          CLAUDE_CLOUD_ISSUE: ${{ github.event.client_payload.issue || inputs.issue }}
           # Control whether to show Claude Code logs
-          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ github.event.client_payload.show_logs == true || inputs.show_logs == true && 'true' || 'false' }}
         run: |
-          echo "🚀 Starting contribution to ${{ inputs.org }}/${{ inputs.repo }}..."
+          echo "🚀 Starting contribution to $ORG_NAME/$REPO_NAME..."
           echo "📋 Show logs: $CLAUDE_CLOUD_SHOW_LOGS"
-          claude-cloud contribute --org "${{ inputs.org }}" --repo "${{ inputs.repo }}"
+          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
 
       - name: Upload Claude logs (if they exist)
         if: always()
