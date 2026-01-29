@@ -1,0 +1,101 @@
+name: Multi-Repository Contribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Repositories to work on (format: owner/repo,owner/repo,...)'
+        required: true
+        type: string
+      issue:
+        description: 'Issue description'
+        required: true
+        type: string
+      show_logs:
+        description: 'Show Claude Code logs (default: false)'
+        required: false
+        type: boolean
+        default: false
+
+  repository_dispatch:
+    types: [multi-repo-trigger]
+
+jobs:
+  contribute:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ${{ fromJSON(format('[{0}]', inputs.repos || github.event.client_payload.repos)) }}
+      fail-fast: false
+      max-parallel: 3
+
+    steps:
+      - name: Checkout claude-cloud
+        uses: actions/checkout@v4
+
+      - name: Parse repository info
+        id: parse-repo
+        run: |
+          REPO_STRING="${{ matrix.repo }}"
+          # Remove quotes if present
+          REPO_STRING=$(echo "$REPO_STRING" | tr -d '"'\''')
+          # Split by /
+          ORG_NAME=$(echo "$REPO_STRING" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$REPO_STRING" | cut -d'/' -f2)
+
+          echo "org=$ORG_NAME" >> $GITHUB_OUTPUT
+          echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "Processing repository: $ORG_NAME/$REPO_NAME"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
+
+      - name: Configure Claude Cloud
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          # Create the config file manually in the home directory
+          cat <<EOF > $HOME/.claude-cloud-config.json
+          {
+            "githubUsername": "$GH_USERNAME",
+            "githubEmail": "$GH_EMAIL",
+            "githubToken": "$GH_TOKEN",
+            "zaiApiKey": "$ZAI_API_KEY",
+            "workDir": "$GITHUB_WORKSPACE/temp_repos"
+          }
+          EOF
+
+      - name: Run Contribution
+        env:
+          # Set the Z.AI model mapping
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          # Use parsed repository information
+          ORG_NAME: ${{ steps.parse-repo.outputs.org }}
+          REPO_NAME: ${{ steps.parse-repo.outputs.repo }}
+          # Pass issue via environment variable to avoid shell quoting issues
+          CLAUDE_CLOUD_ISSUE: ${{ github.event.client_payload.issue || inputs.issue }}
+          # Control whether to show Claude Code logs
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ github.event.client_payload.show_logs == true || inputs.show_logs == true && 'true' || 'false' }}
+        run: |
+          echo "🚀 Starting contribution to $ORG_NAME/$REPO_NAME..."
+          echo "📋 Show logs: $CLAUDE_CLOUD_SHOW_LOGS"
+          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
+
+      - name: Upload Claude logs (if they exist)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-logs-${{ github.run_id }}-${{ steps.parse-repo.outputs.org }}-${{ steps.parse-repo.outputs.repo }}
+          path: ${{ github.workspace }}/temp_repos/${{ steps.parse-repo.outputs.org }}_${{ steps.parse-repo.outputs.repo }}/.claude-logs.txt
+          if-no-files-found: ignore
