@@ -29,12 +29,16 @@ jobs:
       - name: Convert repos to matrix format
         id: convert-matrix
         run: |
-          REPOS_INPUT="${{ inputs.repos || github.event.client_payload.repos }}"
+          # Use printf to safely handle special characters and avoid shell injection
+          REPOS_INPUT="$(printf '%s' "${{ inputs.repos || github.event.client_payload.repos }}")"
           echo "Received input: $REPOS_INPUT"
 
           # Convert comma-separated to JSON array format
           # Input: "owner1/repo1,owner2/repo2" or "[owner1/repo1,owner2/repo2]"
           # Output: [{"repo":"owner1/repo1"},{"repo":"owner2/repo2"}]
+
+          # Strip surrounding quotes if present (handles both single and double quotes)
+          REPOS_INPUT=$(echo "$REPOS_INPUT" | sed 's/^["'\'']\|["'\'']$//g')
 
           # Remove brackets if present
           REPOS_CLEAN=$(echo "$REPOS_INPUT" | sed 's/^\[//' | sed 's/\]$//')
