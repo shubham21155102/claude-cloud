@@ -1,0 +1,93 @@
+name: Scheduled Dark Mode Color Audit
+
+on:
+  schedule:
+    # Runs every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    # Allow manual triggering for testing
+
+jobs:
+  color-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout claude-cloud
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
+
+      - name: Configure Claude Cloud
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          # Create the config file manually in the home directory
+          cat <<EOF > $HOME/.claude-cloud-config.json
+          {
+            "githubUsername": "$GH_USERNAME",
+            "githubEmail": "$GH_EMAIL",
+            "githubToken": "$GH_TOKEN",
+            "zaiApiKey": "$ZAI_API_KEY",
+            "workDir": "$GITHUB_WORKSPACE/temp_repos"
+          }
+          EOF
+
+      - name: Run Dark Mode Color Audit
+        env:
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          ORG_NAME: Grassstone-AI-Pvt-Ltd
+          REPO_NAME: rp360-frontend
+          CLAUDE_CLOUD_ISSUE: |
+            Continue the dark mode color audit work on branch feature/dark-mode-color-audit.
+
+            Your task:
+            1. Continue auditing TypeScript/TSX files for hardcoded colors
+            2. Replace hex colors with CSS variables following these patterns:
+               - #1C1D21 → var(--text-primary)
+               - #747778 / #8181A5 / #666 → var(--text-secondary)
+               - #C4C7C7 → var(--text-muted)
+               - #d4d0d0 / #e3e3e3 / #e5e7eb → var(--border-color)
+               - #f8f8f8 / #f3f3f3 / #F5F5FA → var(--bg-hover) or var(--bg-main)
+               - #fff → var(--bg-card) (where applicable)
+               - #5E81F4 / #4F6BED → var(--accent-primary)
+            3. KEEP semantic colors for data visualization (greens, reds, status colors)
+            4. Update the progress.md file with:
+               - Files completed in this session
+               - Detailed list of changes
+               - Remaining work count
+            5. Commit and push your changes to the feature/dark-mode-color-audit branch
+
+            Work systematically through the remaining ~500 files.
+          CLAUDE_CLOUD_SHOW_LOGS: 'true'
+        run: |
+          echo "🎨 Starting scheduled dark mode color audit..."
+          echo "📅 Run time: $(date)"
+          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME" --branch "feature/dark-mode-color-audit"
+
+      - name: Upload Claude logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-audit-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
+          if-no-files-found: ignore
+
+      - name: Upload progress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: progress-report-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/progress.md
+          if-no-files-found: ignore
