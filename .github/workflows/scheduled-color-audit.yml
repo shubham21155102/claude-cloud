@@ -50,11 +50,14 @@ jobs:
           ORG_NAME: Grassstone-AI-Pvt-Ltd
           REPO_NAME: rp360-frontend
           CLAUDE_CLOUD_ISSUE: |
-            Continue the dark mode color audit work on branch feature/dark-mode-color-audit.
+            IMPORTANT: Checkout and work on the existing branch 'feature/dark-mode-color-audit' for all your changes. Do not create a new branch.
 
-            Your task:
-            1. Continue auditing TypeScript/TSX files for hardcoded colors
-            2. Replace hex colors with CSS variables following these patterns:
+            Continue the dark mode color audit work. Your task:
+
+            1. First, checkout the branch: git checkout feature/dark-mode-color-audit
+            2. Pull latest changes: git pull origin feature/dark-mode-color-audit
+            3. Continue auditing TypeScript/TSX files for hardcoded colors (find files using grep or search tools)
+            4. Replace hex colors with CSS variables following these patterns:
                - #1C1D21 → var(--text-primary)
                - #747778 / #8181A5 / #666 → var(--text-secondary)
                - #C4C7C7 → var(--text-muted)
@@ -62,19 +65,21 @@ jobs:
                - #f8f8f8 / #f3f3f3 / #F5F5FA → var(--bg-hover) or var(--bg-main)
                - #fff → var(--bg-card) (where applicable)
                - #5E81F4 / #4F6BED → var(--accent-primary)
-            3. KEEP semantic colors for data visualization (greens, reds, status colors)
-            4. Update the progress.md file with:
+            5. KEEP semantic colors for data visualization (greens, reds, status colors)
+            6. Create or update the progress.md file in the repository root with:
+               - Session timestamp
                - Files completed in this session
-               - Detailed list of changes
-               - Remaining work count
-            5. Commit and push your changes to the feature/dark-mode-color-audit branch
+               - Detailed list of changes made
+               - Remaining work count (search for remaining hex colors)
+            7. Commit your changes with a clear message
+            8. Push to the feature/dark-mode-color-audit branch
 
-            Work systematically through the remaining ~500 files.
+            Work systematically through the remaining files. Focus on completing 10-20 files per session.
           CLAUDE_CLOUD_SHOW_LOGS: 'true'
         run: |
           echo "🎨 Starting scheduled dark mode color audit..."
           echo "📅 Run time: $(date)"
-          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME" --branch "feature/dark-mode-color-audit"
+          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
 
       - name: Upload Claude logs
         if: always()
