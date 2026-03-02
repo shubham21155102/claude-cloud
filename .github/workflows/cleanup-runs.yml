@@ -1,9 +1,9 @@
 name: Cleanup Old Workflow Runs
 
 on:
-  schedule:
+  # schedule:
     # Run at 2 AM, 10 AM, and 6 PM UTC (3 times a day)
-    - cron: '0 2,10,18 * * *'
+    # - cron: '0 2,10,18 * * *'
   
   workflow_dispatch:
 
