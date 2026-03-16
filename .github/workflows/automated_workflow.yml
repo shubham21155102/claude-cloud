@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       topic:
-        description: 'Topic for Question Bank (e.g., Data Structures, React, Python)'
+        description: 'Topic for Question Bank (e.g.Data Structures, Algorithms, Time Complexity, Space Complexity, Object Oriented Programming, Functional Programming, Operating Systems, Computer Networks, Database Management Systems, System Design, Arrays, Strings, Linked List, Stack, Queue, Recursion, Backtracking, Hashing, Trees, Binary Tree, Binary Search Tree, Heap, Priority Queue, Graphs, Greedy Algorithms, Dynamic Programming, Sliding Window, Two Pointer, Bit Manipulation, Divide and Conquer, Searching Algorithms, Sorting Algorithms, Node.js, Python Backend, Java Backend, REST API, GraphQL, Authentication, JWT, OAuth, Microservices, API Design, MVC Architecture, Serverless, Caching, Redis, Message Queue, Kafka, RabbitMQ, WebSockets, Background Jobs, Logging, Monitoring, HTML, CSS, JavaScript, TypeScript, React, Next.js, Angular, Vue.js, State Management, Redux, Responsive Design, Tailwind CSS, Web Performance, Browser Rendering, Accessibility, SEO, SQL, MySQL, PostgreSQL, MongoDB, NoSQL, Indexing, Query Optimization, Transactions, ACID Properties, Database Design, Normalization, ElasticSearch, Git, GitHub, GitLab, Docker, Kubernetes, CI/CD, Linux, AWS, Azure, GCP, Nginx, Load Balancer, Reverse Proxy, Terraform, Prometheus, Grafana, High Level Design, Low Level Design, Scalability, Rate Limiting, Distributed Systems, CAP Theorem, Design Patterns, SOLID Principles, Clean Architecture )'
         required: true
         type: string
         default: 'Data Structures'
