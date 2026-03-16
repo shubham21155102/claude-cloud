@@ -1,145 +1,194 @@
-# name: Automated Contribution Workflow
+name: Question Bank Generator
 
-# on:
-#   # Run every 30 minutes
-#   schedule:
-#     - cron: '*/30 * * * *'
-  
-#   workflow_dispatch:
-#     inputs:
-#       org:
-#         description: 'Organization or username'
-#         required: true
-#         type: string
-#       repo:
-#         description: 'Repository name'
-#         required: true
-#         type: string
-#       issue:
-#         description: 'Issue description'
-#         required: true
-#         type: string
-#       show_logs:
-#         description: 'Show Claude Code logs (default: false)'
-#         required: false
-#         type: boolean
-#         default: false
+on:
+  # Allows you to manually trigger the workflow from the Actions tab
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Topic for Question Bank (e.g., Data Structures, React, Python)'
+        required: true
+        type: string
+        default: 'Data Structures'
+      count:
+        description: 'Number of questions to generate'
+        required: true
+        type: number
+        default: 50
+      difficulty:
+        description: 'Difficulty distribution'
+        required: true
+        type: choice
+        options:
+          - mixed
+          - easy
+          - medium
+          - hard
+        default: 'mixed'
+      show_logs:
+        description: 'Show Claude Code logs'
+        required: false
+        type: boolean
+        default: true
 
-#   repository_dispatch:
-#     types: [slack-trigger]
+  # Optional: Schedule runs (e.g., once a week to refresh content)
+  schedule:
+    - cron: '0 6 * * 1'
 
-# env:
-#   # Set defaults for scheduled runs. CHANGE THESE to your target repo.
-#   DEFAULT_ORG: "kamal81684"
-#   DEFAULT_REPO: "ai-recruit"
+env:
+  # Default Repository Configuration
+  DEFAULT_ORG: "MAS-Mr-Mentor"
+  DEFAULT_REPO: "mr-mentor-backend"
 
-# jobs:
-#   contribute:
-#     runs-on: ubuntu-latest
+jobs:
+  generate-questions:
+    runs-on: ubuntu-latest
     
-#     steps:
-#       - name: Checkout claude-cloud
-#         uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-#       - name: Setup Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: '18'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-#       - name: Install dependencies
-#         run: |
-#           npm install
-#           npm install -g @anthropic-ai/claude-code
-#           npm link
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @anthropic-ai/claude-code
+          npm link
 
-#       # Step: Planner Agent Analysis
-#       # This runs before the main task to generate a plan using the provided API
-#       - name: Planner Agent Analysis
-#         id: planner_agent
-#         env:
-#           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-#           # Determine target org/repo: Manual Input > Dispatch Payload > Default Env
-#           TARGET_ORG: ${{ github.event.client_payload.org || inputs.org || env.DEFAULT_ORG }}
-#           TARGET_REPO: ${{ github.event.client_payload.repo || inputs.repo || env.DEFAULT_REPO }}
-#         run: |
-#           echo "🤖 Running Planner Agent for $TARGET_ORG/$TARGET_REPO..."
+      # Step 1: Planning Agent
+      # Analyzes the topic and creates a syllabus/plan for the questions
+      - name: Planner Agent - Analyze Topic
+        id: planner_agent
+        env:
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          INPUT_TOPIC: ${{ inputs.topic }}
+          QUESTION_COUNT: ${{ inputs.count }}
+          DIFFICULTY: ${{ inputs.difficulty }}
+        run: |
+          echo "🧠 Planning content for topic: $INPUT_TOPIC..."
           
-#           # Construct the prompt for the agent
-#           PLANNER_PROMPT="You are a senior software architect. Analyze the repository '$TARGET_ORG/$TARGET_REPO'. Your goal is to explore potential improvements. Generate a detailed plan focusing on: 1. Code quality improvements. 2. User-friendly UI/UX enhancements. 3. New feature suggestions. Provide a structured action plan."
-
-#           # Call the API using the provided curl format
-#           RESPONSE=$(curl -s -X POST https://api.z.ai/api/anthropic/v1/messages \
-#             -H "Content-Type: application/json" \
-#             -H "x-api-key: $ZAI_API_KEY" \
-#             -H "anthropic-version: 2023-06-01" \
-#             -d "{
-#               \"model\": \"claude-opus-4-5-20251101\",
-#               \"max_tokens\": 1024,
-#               \"messages\": [
-#                 {
-#                   \"role\": \"user\",
-#                   \"content\": \"$PLANNER_PROMPT\"
-#                 }
-#               ]
-#             }" \
-#             --max-time 3000)
-
-#           # Extract the content from the JSON response
-#           # Assuming the response format follows Anthropic's structure: content[0].text
-#           PLAN_CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          PLANNER_PROMPT="You are a Technical Interview Expert and Curriculum Designer.
+          Create a comprehensive plan to generate $QUESTION_COUNT industry-standard interview questions for the topic: '$INPUT_TOPIC'.
           
-#           echo "📊 Agent Plan Generated:"
-#           echo "$PLAN_CONTENT"
+          Requirements:
+          1. Difficulty preference: $DIFFICULTY.
+          2. Identify key sub-topics relevant to current industry standards (e.g., for Data Structures: Arrays, Trees, Graphs).
+          3. Suggest a balanced distribution of 'multiple-choice' (conceptual) and 'coding' (practical) questions.
           
-#           # Save to environment file for the next step
-#           # We use the GITHUB_ENV file to pass the variable to subsequent steps
-#           {
-#             echo "GENERATED_PLAN<<EOF"
-#             echo "$PLAN_CONTENT"
-#             echo "EOF"
-#           } >> $GITHUB_ENV
+          Output a structured plan listing the sub-topics and the number of questions per sub-topic."
 
-#       - name: Configure Claude Cloud
-#         env:
-#           GH_USERNAME: ${{ secrets.GH_USERNAME }}
-#           GH_EMAIL: ${{ secrets.GH_EMAIL }}
-#           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-#           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-#         run: |
-#           # Create the config file manually in the home directory
-#           cat <<EOF > $HOME/.claude-cloud-config.json
-#           {
-#             "githubUsername": "$GH_USERNAME",
-#             "githubEmail": "$GH_EMAIL",
-#             "githubToken": "$GH_TOKEN",
-#             "zaiApiKey": "$ZAI_API_KEY",
-#             "workDir": "$GITHUB_WORKSPACE/temp_repos"
-#           }
-#           EOF
+          # Call the Z.AI API
+          RESPONSE=$(curl -s -X POST https://api.z.ai/api/anthropic/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ZAI_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "{
+              \"model\": \"claude-opus-4-5-20251101\",
+              \"max_tokens\": 2048,
+              \"messages\": [{ \"role\": \"user\", \"content\": \"$PLANNER_PROMPT\" }]
+            }" \
+            --max-time 3000)
 
-#       - name: Run Contribution
-#         env:
-#           # Set the Z.AI model mapping
-#           ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
-#           # Support manual, Slack, or Scheduled (defaults) triggers
-#           ORG_NAME: ${{ github.event.client_payload.org || inputs.org || env.DEFAULT_ORG }}
-#           REPO_NAME: ${{ github.event.client_payload.repo || inputs.repo || env.DEFAULT_REPO }}
+          PLAN_CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
           
-#           # Priority for Issue: Manual Input > Slack Payload > Generated Plan
-#           # If running on schedule, it uses the plan generated by the Planner Agent
-#           CLAUDE_CLOUD_ISSUE: ${{ github.event.client_payload.issue || inputs.issue || env.GENERATED_PLAN }}
+          echo "📋 Generated Plan:"
+          echo "$PLAN_CONTENT"
           
-#           # Control whether to show Claude Code logs
-#           CLAUDE_CLOUD_SHOW_LOGS: ${{ github.event.client_payload.show_logs == true || inputs.show_logs == true && 'true' || 'false' }}
-#         run: |
-#           echo "🚀 Starting contribution to $ORG_NAME/$REPO_NAME..."
-#           echo "📋 Show logs: $CLAUDE_CLOUD_SHOW_LOGS"
-#           claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
+          # Save plan to environment file for the next step
+          {
+            echo "GENERATED_PLAN<<EOF"
+            echo "$PLAN_CONTENT"
+            echo "EOF"
+          } >> $GITHUB_ENV
 
-#       - name: Upload Claude logs (if they exist)
-#         if: always()
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: claude-logs-${{ github.run_id }}
-#           path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
-#           if-no-files-found: ignore
+      # Step 2: Configure Claude Cloud CLI
+      - name: Configure Claude Cloud
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_EMAIL: ${{ secrets.GH_EMAIL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          cat <<EOF > $HOME/.claude-cloud-config.json
+          {
+            "githubUsername": "$GH_USERNAME",
+            "githubEmail": "$GH_EMAIL",
+            "githubToken": "$GH_TOKEN",
+            "zaiApiKey": "$ZAI_API_KEY",
+            "workDir": "$GITHUB_WORKSPACE/temp_repos"
+          }
+          EOF
+
+      # Step 3: Execute Generation
+      # Uses the plan to generate the actual JSON file
+      - name: Run Question Generation
+        env:
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
+          ORG_NAME: ${{ env.DEFAULT_ORG }}
+          REPO_NAME: ${{ env.DEFAULT_REPO }}
+          
+          # Construct the detailed instruction (Issue) for the agent
+          CLAUDE_CLOUD_ISSUE: |
+            **Task:** Generate Question Bank for Topic: ${{ inputs.topic }}
+
+            **Target Directory:** `src/data/questionBanks/${{ inputs.topic }}/questions.json`
+
+            **Instructions:**
+            1. Create a JSON file at the target directory path.
+            2. Generate ${{ inputs.count }} industry-standard interview questions.
+            3. Follow the generated plan below for topic distribution:
+            
+            --- PLAN START ---
+            ${{ env.GENERATED_PLAN }}
+            --- PLAN END ---
+
+            **Strict JSON Schema:**
+            The output MUST be valid JSON matching this structure:
+            ```json
+            {
+              "category": "Topic Name",
+              "questions": [
+                {
+                  "type": "multiple-choice", 
+                  "difficulty": "easy",
+                  "question": "Question text?",
+                  "points": 2,
+                  "timeLimit": 30,
+                  "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
+                  "correctAnswer": "Opt A",
+                  "tags": ["tag1", "tag2"]
+                },
+                {
+                  "type": "coding",
+                  "difficulty": "medium",
+                  "question": "Implement a function...",
+                  "points": 10,
+                  "timeLimit": 300,
+                  "codeTemplate": "def solution():\n    pass",
+                  "language": "python",
+                  "tags": ["implementation"]
+                }
+              ]
+            }
+            ```
+
+            **Quality Standards:**
+            - Questions must be relevant to current industry hiring standards (FAANG/MAANG level).
+            - Ensure code templates are clean and language-appropriate.
+            - Do not wrap the JSON in markdown code blocks (```). Output raw JSON text in the file.
+          
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+        run: |
+          echo "🚀 Generating questions for ${{ inputs.topic }} in $ORG_NAME/$REPO_NAME..."
+          claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
+
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
+          if-no-files-found: ignore
