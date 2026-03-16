@@ -1,8 +1,4 @@
-Here is the updated complete `.yml` file. I have changed the schedule to run every 15 minutes and added a **Default Topic** environment variable so the scheduled runs know what to generate if you don't trigger it manually.
 
-Save this file at `.github/workflows/question-generator.yml`.
-
-```yaml
 name: Question Bank Generator
 
 on:
@@ -206,4 +202,3 @@ jobs:
           name: claude-logs-${{ github.run_id }}
           path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
           if-no-files-found: ignore
-```
