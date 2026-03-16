@@ -1,7 +1,16 @@
+Here is the updated complete `.yml` file. I have changed the schedule to run every 15 minutes and added a **Default Topic** environment variable so the scheduled runs know what to generate if you don't trigger it manually.
+
+Save this file at `.github/workflows/question-generator.yml`.
+
+```yaml
 name: Question Bank Generator
 
 on:
-  # Allows you to manually trigger the workflow from the Actions tab
+  # Runs every 15 minutes
+  schedule:
+    - cron: '*/15 * * * *'
+  
+  # Allows manual trigger from the Actions tab
   workflow_dispatch:
     inputs:
       topic:
@@ -30,14 +39,15 @@ on:
         type: boolean
         default: true
 
-  # Optional: Schedule runs (e.g., once a week to refresh content)
-  schedule:
-    - cron: '0 6 * * 1'
-
 env:
-  # Default Repository Configuration
+  # Repository Configuration
   DEFAULT_ORG: "MAS-Mr-Mentor"
   DEFAULT_REPO: "mr-mentor-backend"
+  
+  # DEFAULT TOPIC for scheduled runs (Change this if you want a different topic auto-generated)
+  DEFAULT_TOPIC: "Data Structures"
+  DEFAULT_COUNT: 50
+  DEFAULT_DIFFICULTY: "mixed"
 
 jobs:
   generate-questions:
@@ -59,14 +69,15 @@ jobs:
           npm link
 
       # Step 1: Planning Agent
-      # Analyzes the topic and creates a syllabus/plan for the questions
+      # Determines the topic (Manual Input > Default) and creates a syllabus
       - name: Planner Agent - Analyze Topic
         id: planner_agent
         env:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-          INPUT_TOPIC: ${{ inputs.topic }}
-          QUESTION_COUNT: ${{ inputs.count }}
-          DIFFICULTY: ${{ inputs.difficulty }}
+          # Logic: Use manual input if present, else use Default Env Var
+          INPUT_TOPIC: ${{ inputs.topic || env.DEFAULT_TOPIC }}
+          QUESTION_COUNT: ${{ inputs.count || env.DEFAULT_COUNT }}
+          DIFFICULTY: ${{ inputs.difficulty || env.DEFAULT_DIFFICULTY }}
         run: |
           echo "🧠 Planning content for topic: $INPUT_TOPIC..."
           
@@ -130,15 +141,18 @@ jobs:
           ORG_NAME: ${{ env.DEFAULT_ORG }}
           REPO_NAME: ${{ env.DEFAULT_REPO }}
           
+          # Determine target topic dynamically
+          TARGET_TOPIC: ${{ inputs.topic || env.DEFAULT_TOPIC }}
+          
           # Construct the detailed instruction (Issue) for the agent
           CLAUDE_CLOUD_ISSUE: |
-            **Task:** Generate Question Bank for Topic: ${{ inputs.topic }}
+            **Task:** Generate Question Bank for Topic: ${{ inputs.topic || env.DEFAULT_TOPIC }}
 
-            **Target Directory:** `src/data/questionBanks/${{ inputs.topic }}/questions.json`
+            **Target Directory:** `src/data/questionBanks/${{ inputs.topic || env.DEFAULT_TOPIC }}/questions.json`
 
             **Instructions:**
             1. Create a JSON file at the target directory path.
-            2. Generate ${{ inputs.count }} industry-standard interview questions.
+            2. Generate ${{ inputs.count || env.DEFAULT_COUNT }} industry-standard interview questions.
             3. Follow the generated plan below for topic distribution:
             
             --- PLAN START ---
@@ -180,9 +194,9 @@ jobs:
             - Ensure code templates are clean and language-appropriate.
             - Do not wrap the JSON in markdown code blocks (```). Output raw JSON text in the file.
           
-          CLAUDE_CLOUD_SHOW_LOGS: ${{ inputs.show_logs == true && 'true' || 'false' }}
+          CLAUDE_CLOUD_SHOW_LOGS: ${{ github.event.client_payload.show_logs == true || inputs.show_logs == true && 'true' || 'false' }}
         run: |
-          echo "🚀 Generating questions for ${{ inputs.topic }} in $ORG_NAME/$REPO_NAME..."
+          echo "🚀 Generating questions for $TARGET_TOPIC in $ORG_NAME/$REPO_NAME..."
           claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
 
       - name: Upload Logs
@@ -192,3 +206,4 @@ jobs:
           name: claude-logs-${{ github.run_id }}
           path: ${{ github.workspace }}/temp_repos/*/.claude-logs.txt
           if-no-files-found: ignore
+```
