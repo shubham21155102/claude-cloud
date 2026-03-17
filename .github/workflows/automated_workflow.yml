@@ -63,7 +63,7 @@ on:
           - 'json'     # Standard JSON
           - 'hjson'    # Human-readable JSON
           - 'yaml'     # YAML format
-        default: 'all'
+        default: 'json'
 
       show_logs:
         description: 'Show Claude Code logs'
