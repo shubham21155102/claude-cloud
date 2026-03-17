@@ -1,24 +1,47 @@
 
-name: Question Bank Generator
+name: Universal Question Bank Generator
 
 on:
   # Runs every 15 minutes
   schedule:
     - cron: '*/15 * * * *'
-  
+
   # Allows manual trigger from the Actions tab
   workflow_dispatch:
     inputs:
-      topic:
-        description: 'Topic for Question Bank (e.g.Data Structures, Algorithms, Time Complexity, Space Complexity, Object Oriented Programming, Functional Programming, Operating Systems, Computer Networks, Database Management Systems, System Design, Arrays, Strings, Linked List, Stack, Queue, Recursion, Backtracking, Hashing, Trees, Binary Tree, Binary Search Tree, Heap, Priority Queue, Graphs, Greedy Algorithms, Dynamic Programming, Sliding Window, Two Pointer, Bit Manipulation, Divide and Conquer, Searching Algorithms, Sorting Algorithms, Node.js, Python Backend, Java Backend, REST API, GraphQL, Authentication, JWT, OAuth, Microservices, API Design, MVC Architecture, Serverless, Caching, Redis, Message Queue, Kafka, RabbitMQ, WebSockets, Background Jobs, Logging, Monitoring, HTML, CSS, JavaScript, TypeScript, React, Next.js, Angular, Vue.js, State Management, Redux, Responsive Design, Tailwind CSS, Web Performance, Browser Rendering, Accessibility, SEO, SQL, MySQL, PostgreSQL, MongoDB, NoSQL, Indexing, Query Optimization, Transactions, ACID Properties, Database Design, Normalization, ElasticSearch, Git, GitHub, GitLab, Docker, Kubernetes, CI/CD, Linux, AWS, Azure, GCP, Nginx, Load Balancer, Reverse Proxy, Terraform, Prometheus, Grafana, High Level Design, Low Level Design, Scalability, Rate Limiting, Distributed Systems, CAP Theorem, Design Patterns, SOLID Principles, Clean Architecture )'
+      # Question Type Category - Major category of questions
+      category:
+        description: 'Question Category (DSA, Frontend, Backend, DevOps, System Design, Behavioral, Database, Mobile, etc.)'
         required: true
+        type: choice
+        options:
+          - 'random'
+          - 'dsa'
+          - 'frontend'
+          - 'backend'
+          - 'devops'
+          - 'system-design'
+          - 'behavioral'
+          - 'database'
+          - 'mobile'
+          - 'cloud'
+          - 'security'
+          - 'testing'
+          - 'ai-ml'
+        default: 'random'
+
+      # Specific Topic (optional, overrides category)
+      topic:
+        description: 'Specific Topic (optional - e.g., React, PostgreSQL, AWS, Docker, Kubernetes, Microservices, etc.)'
+        required: false
         type: string
-        default: 'Data Structures'
+
       count:
         description: 'Number of questions to generate'
         required: true
         type: number
         default: 50
+
       difficulty:
         description: 'Difficulty distribution'
         required: true
@@ -29,6 +52,19 @@ on:
           - medium
           - hard
         default: 'mixed'
+
+      # Output Format Selection
+      output_format:
+        description: 'Output format (single format only)'
+        required: true
+        type: choice
+        options:
+          - 'all'      # Generate all three formats
+          - 'json'     # Standard JSON
+          - 'hjson'    # Human-readable JSON
+          - 'yaml'     # YAML format
+        default: 'all'
+
       show_logs:
         description: 'Show Claude Code logs'
         required: false
@@ -39,16 +75,93 @@ env:
   # Repository Configuration
   DEFAULT_ORG: "MAS-Mr-Mentor"
   DEFAULT_REPO: "mr-mentor-backend"
-  
-  # DEFAULT TOPIC for scheduled runs (Change this if you want a different topic auto-generated)
-  DEFAULT_TOPIC: "Data Structures"
+
+  # Question Categories Configuration
+  DEFAULT_CATEGORY: "random"
   DEFAULT_COUNT: 50
   DEFAULT_DIFFICULTY: "mixed"
+  DEFAULT_OUTPUT_FORMAT: "all"
 
 jobs:
+  # Job 1: Determine the question category and topic
+  determine-category:
+    runs-on: ubuntu-latest
+    outputs:
+      selected_category: ${{ steps.category_selector.outputs.category }}
+      selected_topic: ${{ steps.topic_resolver.outputs.topic }}
+      output_formats: ${{ steps.format_resolver.outputs.formats }}
+    steps:
+      - name: Determine Category and Topic
+        id: category_selector
+        env:
+          INPUT_CATEGORY: ${{ inputs.category }}
+          INPUT_TOPIC: ${{ inputs.topic }}
+        run: |
+          # Get current day of year (1-366) for deterministic randomness
+          DAY_OF_YEAR=$(date +%j | sed 's/^0*//')
+
+          # Define all categories array
+          CATEGORIES=("dsa" "frontend" "backend" "devops" "system-design" "behavioral" "database" "mobile" "cloud" "security" "testing" "ai-ml")
+          NUM_CATEGORIES=${#CATEGORIES[@]}
+
+          # Select category (random or user-specified)
+          if [ "$INPUT_CATEGORY" = "random" ] || [ -z "$INPUT_CATEGORY" ]; then
+            # Use day of year to pseudo-randomly select a category
+            INDEX=$(( ($DAY_OF_YEAR * 7) % $NUM_CATEGORIES ))
+            SELECTED_CATEGORY="${CATEGORIES[$INDEX]}"
+          else
+            SELECTED_CATEGORY="$INPUT_CATEGORY"
+          fi
+
+          echo "Selected Category: $SELECTED_CATEGORY"
+          echo "category=$SELECTED_CATEGORY" >> $GITHUB_OUTPUT
+
+      - name: Resolve Specific Topic
+        id: topic_resolver
+        env:
+          CATEGORY: ${{ steps.category_selector.outputs.category }}
+          INPUT_TOPIC: ${{ inputs.topic }}
+        run: |
+          # If user provided a specific topic, use it; otherwise use category
+          if [ -n "$INPUT_TOPIC" ]; then
+            FINAL_TOPIC="$INPUT_TOPIC"
+          else
+            FINAL_TOPIC="$CATEGORY"
+          fi
+
+          echo "Final Topic: $FINAL_TOPIC"
+          echo "topic=$FINAL_TOPIC" >> $GITHUB_OUTPUT
+
+      - name: Resolve Output Formats
+        id: format_resolver
+        env:
+          OUTPUT_FORMAT: ${{ inputs.output_format }}
+        run: |
+          case "$OUTPUT_FORMAT" in
+            "all")
+              FORMATS='["json", "hjson", "yaml"]'
+              ;;
+            "json")
+              FORMATS='["json"]'
+              ;;
+            "hjson")
+              FORMATS='["hjson"]'
+              ;;
+            "yaml")
+              FORMATS='["yaml"]'
+              ;;
+            *)
+              FORMATS='["json"]'
+              ;;
+          esac
+
+          echo "Output Formats: $FORMATS"
+          echo "formats=$FORMATS" >> $GITHUB_OUTPUT
+
   generate-questions:
     runs-on: ubuntu-latest
-    
+    needs: determine-category
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,31 +177,55 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           npm link
 
-      # Step 1: Planning Agent
-      # Determines the topic (Manual Input > Default) and creates a syllabus
-      - name: Planner Agent - Analyze Topic
+      # Step 1: Planning Agent - Creates comprehensive plan for the selected category/topic
+      - name: Planner Agent - Create Comprehensive Plan
         id: planner_agent
         env:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-          # Logic: Use manual input if present, else use Default Env Var
-          INPUT_TOPIC: ${{ inputs.topic || env.DEFAULT_TOPIC }}
+          CATEGORY: ${{ needs.determine-category.outputs.selected_category }}
+          TOPIC: ${{ needs.determine-category.outputs.selected_topic }}
           QUESTION_COUNT: ${{ inputs.count || env.DEFAULT_COUNT }}
           DIFFICULTY: ${{ inputs.difficulty || env.DEFAULT_DIFFICULTY }}
+          OUTPUT_FORMATS: ${{ needs.determine-category.outputs.output_formats }}
         run: |
-          echo "🧠 Planning content for topic: $INPUT_TOPIC..."
-          
-          PLANNER_PROMPT="You are a Technical Interview Expert and Curriculum Designer.
-          Create a comprehensive plan to generate $QUESTION_COUNT industry-standard interview questions for the topic: '$INPUT_TOPIC'.
-          
-          Requirements:
-          1. Difficulty preference: $DIFFICULTY.
-          2. Identify key sub-topics relevant to current industry standards (e.g., for Data Structures: Arrays, Trees, Graphs).
-          3. Suggest a balanced distribution of 'multiple-choice' (conceptual) and 'coding' (practical) questions.
-          
-          Output a structured plan listing the sub-topics and the number of questions per sub-topic.
-          please do not replace the old questions just create a new file to save in the same folder
+          echo "🧠 Planning content for category: $CATEGORY, topic: $TOPIC..."
+
+          PLANNER_PROMPT="You are a Technical Interview Expert and Curriculum Designer with deep knowledge across all domains of software engineering and job interviews.
+
+          Create a comprehensive plan to generate $QUESTION_COUNT industry-standard interview questions.
+
+          **Parameters:**
+          - Category: $CATEGORY
+          - Specific Topic: $TOPIC
+          - Difficulty Preference: $DIFFICULTY
+          - Output Formats: $OUTPUT_FORMATS
+
+          **Requirements:**
+          1. Identify ALL relevant sub-topics for this category/topic
+          2. Include a mix of question types:
+             - Multiple-choice questions (MCQ) for conceptual knowledge
+             - Coding questions for practical implementation
+             - System design questions for architectural thinking
+             - Behavioral questions for soft skills (if relevant)
+          3. Suggest a balanced distribution across difficulty levels: $DIFFICULTY
+          4. Ensure questions are FAANG/MAANG level quality
+          5. DO NOT replace existing files - create new timestamped files
+
+          **Question Categories Coverage:**
+          - DSA: Data Structures, Algorithms, Complexity Analysis
+          - Frontend: HTML, CSS, JavaScript, TypeScript, Frameworks (React, Vue, Angular), State Management, Performance, Accessibility
+          - Backend: Node.js, Python, Java, REST APIs, GraphQL, Authentication, Microservices, Databases, Caching
+          - DevOps: Docker, Kubernetes, CI/CD, Git, Linux, Monitoring, Logging
+          - System Design: Scalability, HLD, LLD, CAP Theorem, Distributed Systems
+          - Database: SQL, NoSQL, Indexing, Transactions, ACID, Design
+          - Cloud: AWS, Azure, GCP, Serverless, Architecture
+          - Security: OWASP, Authentication, Authorization, Encryption
+          - Testing: Unit, Integration, E2E, TDD, BDD
+          - Mobile: React Native, Flutter, iOS, Android
+          - AI/ML: ML Algorithms, Deep Learning, NLP, Computer Vision, MLOps
+
+          Output a structured plan with sub-topics and question counts per sub-topic.
           "
-          
 
           # Call the Z.AI API
           RESPONSE=$(curl -s -X POST https://api.z.ai/api/anthropic/v1/messages \
@@ -97,16 +234,16 @@ jobs:
             -H "anthropic-version: 2023-06-01" \
             -d "{
               \"model\": \"claude-opus-4-5-20251101\",
-              \"max_tokens\": 2048,
+              \"max_tokens\": 4096,
               \"messages\": [{ \"role\": \"user\", \"content\": \"$PLANNER_PROMPT\" }]
             }" \
             --max-time 3000)
 
           PLAN_CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
-          
+
           echo "📋 Generated Plan:"
           echo "$PLAN_CONTENT"
-          
+
           # Save plan to environment file for the next step
           {
             echo "GENERATED_PLAN<<EOF"
@@ -132,70 +269,249 @@ jobs:
           }
           EOF
 
-      # Step 3: Execute Generation
-      # Uses the plan to generate the actual JSON file
-      - name: Run Question Generation
+      # Step 3: Execute Generation - Creates questions in multiple formats
+      - name: Run Universal Question Generation
         env:
           ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-4.7
           ORG_NAME: ${{ env.DEFAULT_ORG }}
           REPO_NAME: ${{ env.DEFAULT_REPO }}
-          
-          # Determine target topic dynamically
-          TARGET_TOPIC: ${{ inputs.topic || env.DEFAULT_TOPIC }}
-          
-          # Construct the detailed instruction (Issue) for the agent
+
+          # Dynamic parameters
+          TARGET_CATEGORY: ${{ needs.determine-category.outputs.selected_category }}
+          TARGET_TOPIC: ${{ needs.determine-category.outputs.selected_topic }}
+          OUTPUT_FORMATS: ${{ needs.determine-category.outputs.output_formats }}
+
           CLAUDE_CLOUD_ISSUE: |
-            **Task:** Generate Question Bank for Topic: ${{ inputs.topic || env.DEFAULT_TOPIC }}
+            # Universal Interview Question Generator
 
-            **Target Directory:** `src/data/questionBanks/${{ inputs.topic || env.DEFAULT_TOPIC }}/questions.json`
+            **Task:** Generate a comprehensive question bank for the following parameters:
 
-            **Instructions:**
-            1. Create a JSON file at the target directory path.
-            2. Generate ${{ inputs.count || env.DEFAULT_COUNT }} industry-standard interview questions.
-            3. Follow the generated plan below for topic distribution:
-            
-            --- PLAN START ---
-            ${{ env.GENERATED_PLAN }}
-            --- PLAN END ---
+            - **Category:** ${{ needs.determine-category.outputs.selected_category }}
+            - **Topic:** ${{ needs.determine-category.outputs.selected_topic }}
+            - **Question Count:** ${{ inputs.count || 50 }}
+            - **Difficulty:** ${{ inputs.difficulty || 'mixed' }}
+            - **Output Formats:** ${{ needs.determine-category.outputs.output_formats }}
 
-            **Strict JSON Schema:**
-            The output MUST be valid JSON matching this structure:
+            ## Directory Structure
+            Create the following directory structure (if not exists):
+            ```
+            src/data/questionBanks/
+            ├── ${{ needs.determine-category.outputs.selected_category }}/
+            │   ├── questions.json
+            │   ├── questions.hjson
+            │   └── questions.yaml
+            ```
+
+            ## Question Types to Generate
+            Generate a mix of the following question types based on the category:
+
+            1. **Multiple Choice Questions (MCQ)** - For conceptual knowledge
+            2. **Coding Questions** - For practical implementation
+            3. **System Design Questions** - For architectural thinking
+            4. **Short Answer Questions** - For quick assessments
+            5. **Essay/Discussion Questions** - For in-depth understanding
+            6. **Behavioral Questions** - For soft skills (if applicable)
+
+            ## JSON Format Schema
+            For `questions.json` file:
             ```json
             {
-              "category": "Topic Name",
+              "metadata": {
+                "category": "${{ needs.determine-category.outputs.selected_category }}",
+                "topic": "${{ needs.determine-category.outputs.selected_topic }}",
+                "generatedAt": "ISO-8601-TIMESTAMP",
+                "difficulty": "${{ inputs.difficulty || 'mixed' }}",
+                "totalQuestions": <count>
+              },
               "questions": [
                 {
-                  "type": "multiple-choice", 
-                  "difficulty": "easy",
-                  "question": "Question text?",
-                  "points": 2,
-                  "timeLimit": 30,
-                  "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
-                  "correctAnswer": "Opt A",
-                  "tags": ["tag1", "tag2"]
-                },
-                {
-                  "type": "coding",
-                  "difficulty": "medium",
-                  "question": "Implement a function...",
-                  "points": 10,
-                  "timeLimit": 300,
-                  "codeTemplate": "def solution():\n    pass",
-                  "language": "python",
-                  "tags": ["implementation"]
+                  "id": "unique-id",
+                  "type": "multiple-choice|coding|system-design|short-answer|essay|behavioral",
+                  "difficulty": "easy|medium|hard",
+                  "question": "Question text here",
+                  "points": <number>,
+                  "timeLimit": <seconds>,
+                  "options": ["A", "B", "C", "D"], // for MCQ
+                  "correctAnswer": "A", // for MCQ
+                  "codeTemplate": "function solution() {}", // for coding
+                  "language": "javascript|python|java|etc", // for coding
+                  "tags": ["tag1", "tag2"],
+                  "explanation": "Detailed explanation"
                 }
               ]
             }
             ```
 
-            **Quality Standards:**
-            - Questions must be relevant to current industry hiring standards (FAANG/MAANG level).
-            - Ensure code templates are clean and language-appropriate.
-            - Do not wrap the JSON in markdown code blocks (```). Output raw JSON text in the file.
-          
+            ## HJSON Format Schema
+            For `questions.hjson` file (human-readable JSON):
+            ```hjson
+            {
+              metadata: {
+                category: '${{ needs.determine-category.outputs.selected_category }}'
+                topic: '${{ needs.determine-category.outputs.selected_topic }}'
+                generatedAt: 'ISO-8601-TIMESTAMP'
+                difficulty: '${{ inputs.difficulty || 'mixed' }}'
+                totalQuestions: <count>
+              }
+              questions: [
+                {
+                  id: 'unique-id'
+                  type: 'multiple-choice'
+                  difficulty: 'easy'
+                  question: 'Question text here'
+                  points: 2
+                  timeLimit: 30
+                  options: [
+                    'Option A'
+                    'Option B'
+                    'Option C'
+                    'Option D'
+                  ]
+                  correctAnswer: 'Option A'
+                  tags: [
+                    'tag1'
+                    'tag2'
+                  ]
+                  explanation: 'Detailed explanation'
+                }
+              ]
+            }
+            ```
+
+            ## YAML Format Schema
+            For `questions.yaml` file:
+            ```yaml
+            metadata:
+              category: ${{ needs.determine-category.outputs.selected_category }}
+              topic: ${{ needs.determine-category.outputs.selected_topic }}
+              generatedAt: ISO-8601-TIMESTAMP
+              difficulty: ${{ inputs.difficulty || 'mixed' }}
+              totalQuestions: <count>
+            questions:
+              - id: unique-id
+                type: multiple-choice
+                difficulty: easy
+                question: Question text here
+                points: 2
+                timeLimit: 30
+                options:
+                  - Option A
+                  - Option B
+                  - Option C
+                  - Option D
+                correctAnswer: Option A
+                tags:
+                  - tag1
+                  - tag2
+                explanation: Detailed explanation
+            ```
+
+            ## Comprehensive Category Coverage
+
+            Generate questions covering these aspects based on the category:
+
+            ### DSA Category
+            - Arrays, Strings, Linked Lists, Trees, Graphs, Hashing, DP, Greedy, Sorting, Searching
+            - Time & Space Complexity analysis
+            - Algorithm design patterns
+
+            ### Frontend Category
+            - HTML5, CSS3, JavaScript (ES6+), TypeScript
+            - Frameworks: React, Vue, Angular, Next.js, Nuxt.js
+            - State Management: Redux, Pinia, Vuex, Zustand
+            - Styling: Tailwind, Styled Components, SCSS
+            - Performance, Accessibility, SEO, Browser APIs
+
+            ### Backend Category
+            - Node.js, Express, Python (Django, Flask, FastAPI), Java (Spring)
+            - REST APIs, GraphQL, gRPC
+            - Authentication: JWT, OAuth, Sessions
+            - Databases: SQL (PostgreSQL, MySQL) and NoSQL (MongoDB, Redis)
+            - Microservices, Message Queues (Kafka, RabbitMQ)
+
+            ### DevOps Category
+            - Docker, Kubernetes, Helm
+            - CI/CD: GitHub Actions, GitLab CI, Jenkins
+            - Git, GitHub, GitLab, GitOps
+            - Linux, Shell Scripting, Bash
+            - Monitoring: Prometheus, Grafana, ELK Stack
+            - IaC: Terraform, CloudFormation, Ansible
+
+            ### System Design Category
+            - HLD (High-Level Design), LLD (Low-Level Design)
+            - Scalability, Load Balancing, Caching
+            - CAP Theorem, ACID Properties
+            - Distributed Systems, Consensus Algorithms
+            - API Design, Microservices Architecture
+
+            ### Database Category
+            - SQL: Joins, Indexing, Query Optimization, Normalization
+            - NoSQL: Document, Key-Value, Column, Graph databases
+            - Transactions, Concurrency, ACID, BASE
+            - Replication, Sharding, Partitioning
+            - ElasticSearch, Data Modeling
+
+            ### Cloud Category
+            - AWS: EC2, S3, Lambda, RDS, DynamoDB, VPC, IAM
+            - Azure: App Service, Functions, Cosmos DB
+            - GCP: Compute Engine, Cloud Functions, BigQuery
+            - Serverless, Cloud Architecture Patterns
+            - Cost Optimization, Security
+
+            ### Security Category
+            - OWASP Top 10, XSS, CSRF, SQL Injection
+            - Authentication, Authorization, Encryption
+            - HTTPS, SSL/TLS, Certificate Management
+            - Security Headers, CORS, CSP
+            - Penetration Testing, Security Audits
+
+            ### Testing Category
+            - Unit Testing (Jest, Mocha, JUnit, PyTest)
+            - Integration Testing, E2E Testing (Cypress, Playwright)
+            - TDD, BDD, Testing Pyramids
+            - Mocking, Stubbing, Test Doubles
+            - API Testing, Performance Testing
+
+            ### Mobile Category
+            - React Native, Flutter
+            - iOS (Swift, SwiftUI), Android (Kotlin, Jetpack Compose)
+            - Mobile Architecture Patterns (MVVM, Clean Architecture)
+            - State Management, Navigation
+            - Performance Optimization, Offline Support
+
+            ### AI/ML Category
+            - ML Algorithms: Regression, Classification, Clustering
+            - Deep Learning: Neural Networks, CNNs, RNNs, Transformers
+            - NLP: Tokenization, Embeddings, LLMs
+            - MLOps: Model Deployment, Monitoring, Versioning
+            - Frameworks: TensorFlow, PyTorch, Scikit-learn
+
+            ### Behavioral Category
+            - Leadership, Teamwork, Conflict Resolution
+            - Problem-Solving, Adaptability
+            - Communication, Time Management
+            - STAR Method Questions
+            - Cultural Fit Questions
+
+            ## Instructions
+
+            1. **DO NOT** replace existing files - create new files with timestamp suffixes if needed
+            2. Generate exactly ${{ inputs.count || 50 }} questions distributed evenly across relevant sub-topics
+            3. Ensure all questions are industry-standard and interview-ready
+            4. Use the generated plan below for guidance:
+
+            --- PLAN START ---
+            ${{ env.GENERATED_PLAN }}
+            --- PLAN END ---
+
+            5. Create ALL requested output formats: ${{ needs.determine-category.outputs.output_formats }}
+            6. Ensure each format is valid and can be parsed correctly
+            7. Add unique IDs to each question for tracking
+
           CLAUDE_CLOUD_SHOW_LOGS: ${{ github.event.client_payload.show_logs == true || inputs.show_logs == true && 'true' || 'false' }}
         run: |
-          echo "🚀 Generating questions for $TARGET_TOPIC in $ORG_NAME/$REPO_NAME..."
+          echo "🚀 Generating questions for category: $TARGET_CATEGORY, topic: $TARGET_TOPIC"
+          echo "📁 Output formats: $OUTPUT_FORMATS"
           claude-cloud contribute --org "$ORG_NAME" --repo "$REPO_NAME"
 
       - name: Upload Logs
